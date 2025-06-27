@@ -16,13 +16,17 @@ impl Vocab {
     }
 
     fn extend_from_text(&mut self, input: &str) {
-        let re = Regex::new(r#"[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*|[,.?_!"()':;]|--|\s"#)
-            .expect("Provided regex was tested and should be correct");
+        let re =
+            Regex::new(r#"<\|[a-zA-Z0-9_]+\|>|[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*|[,.?_!"()':;]|--|\s"#)
+                .expect("Provided regex was tested and should be correct");
 
         let unique_tokens: HashSet<&str> = re.find_iter(input).map(|m| m.as_str()).collect();
         let mut unique_tokens = Vec::from_iter(unique_tokens);
 
         unique_tokens.sort();
+
+        unique_tokens.push("<|unk|>");
+        unique_tokens.push("<|endoftext|>");
 
         let tokens_to_token_ids: Vec<(String, usize)> = unique_tokens
             .iter()
@@ -52,8 +56,9 @@ impl SimpleTokenizerV1 {
     }
 
     fn encode(&self, input: &str) -> Result<Vec<usize>> {
-        let re = Regex::new(r#"[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*|[,.?_!"()':;]|--|\s"#)
-            .expect("Provided regex was tested and should be correct");
+        let re =
+            Regex::new(r#"<\|[a-zA-Z0-9_]+\|>|[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*|[,.?_!"()':;]|--|\s"#)
+                .expect("Provided regex was tested and should be correct");
 
         let tokens: Vec<&str> = re.find_iter(input).map(|m| m.as_str()).collect();
 
@@ -62,8 +67,11 @@ impl SimpleTokenizerV1 {
             .map(|&text| {
                 self.token_to_token_ids
                     .get(text)
-                    .copied()
-                    .ok_or(Error::msg("Token not found in vocabulary"))
+                    .or(self.token_to_token_ids.get("<|unk|>"))
+                    .ok_or(Error::msg(
+                        "Vocabulary does not contain token id for unknown token",
+                    ))
+                    .cloned()
             })
             .collect()
     }
@@ -96,12 +104,16 @@ fn main() -> Result<()> {
 
     let tokenizer = SimpleTokenizerV1::new(vocab);
 
-    let tokens = tokenizer.encode(input)?;
+    let text1 = "Hello, do you like tea?";
+    let text2 = "In the sunlit terraces of the palace.";
+    let text = format!("{} <|endoftext|> {}", text1, text2);
+
+    let tokens = tokenizer.encode(&text)?;
 
     let decoded = tokenizer.decode(tokens)?;
 
     println!("{}", decoded);
-    assert_eq!(decoded, input);
+    // assert_eq!(decoded, input);
 
     Ok(())
 }
